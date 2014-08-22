@@ -1,0 +1,166 @@
+---
+output: html_document
+---
+## Practical Machine Learning assignment
+
+Basically, for this assignment, we need several packages, which are listed below.
+
+Need to install Caret package
+install.packages('caret')
+install.packages('kernlab')
+library(kernlab)
+library(caret)
+install.packages('e1071')
+library(e1071)
+install.packages('randomForest')
+install.packages('rpart')
+library(rpart)
+install.packages('nnet')
+library(nnet)
+
+
+```{r, results='hide'}
+set.seed(3462)
+library(caret)
+library(e1071)
+library(randomForest)
+```
+
+# Abstract
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har People use their devices such as Jawbone Up, Nike FuelBand, and Fitbit to track their everyday behavior.
+The goal of this project is to predict the manner in which people did the exercise. This is the "classe" variable in the training set.
+In purpose of this assignment, I've condacted a small version of the analysis to make it simple and clean.
+Trainig set is available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+Test set is available here (for the assignment purpose): https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Downloading data
+
+```{r, download_files}
+if (!file.exists("./workoutTraining.csv")) {
+    download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+        destfile = "./workoutTraining.csv")
+}
+if (!file.exists("./workoutTesting.csv")) {
+    download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+        destfile = "./workoutTesting.csv")
+}
+```
+Then assign files to the variables
+```{r, ceate_varialbe}
+workoutTraining <- read.csv("./workoutTraining.csv")
+workoutTesting <- read.csv("./workoutTesting.csv")
+```
+
+### Data explore and cleaning
+
+```{r}
+dim(workoutTraining)
+sum(complete.cases(workoutTraining))
+```
+
+Worth to menton that we have lots of cases which are missing. We have 19622 observations with 160 variables. Only 406 complete cases.
+
+```{r}
+head(workoutTraining)
+# we see that there are "X" and "user_name" columns which is not useful for creating model.
+removeColums <- grep("X|user_name", names(workoutTraining))
+workoutTraining <- workoutTraining[, -removeColums]
+```
+
+Some variables have zero-close variability. It's not useful to include them into the model since they don't have any impact.
+
+```{r}
+zeroVar <- nearZeroVar(workoutTraining)
+workoutTraining <- workoutTraining[, -zeroVar]
+dim(workoutTraining)
+```
+
+We have cut some varibles, so no we have 98 columns
+
+Let's remove NA values.
+
+```{r}
+NAs <- apply(workoutTraining, 2, function(x) {
+    sum(is.na(x))
+})
+workoutTraining <- workoutTraining[, which(NAs == 0)]
+dim(workoutTraining)
+```
+The final table have 57 variables and 19622 observations.
+
+## Building model
+
+We create train and test sets within our training set to test our future model
+
+```{r}
+Index <- createDataPartition(y = workoutTraining$classe, p = 0.7, list = FALSE)
+workoutTrainingSubTrain <- workoutTraining[Index, ]
+workoutTrainingSubTest <- workoutTraining[-Index, ]
+```
+
+Firstly, let's try Recursive Partitioning and Regression Trees.
+
+```{r, cache=TRUE}
+rpartFit <- train(classe ~ ., data = workoutTrainingSubTrain, method = "rpart")
+rpartFit$results$Accuracy[1]
+```
+
+As we see, our model have 56,2% accuracy which is not so good. 
+
+Let's now train model with Neural networks method.
+
+```{r, results='hide', cache=TRUE}
+nnetFit <- train(classe ~ ., method = "nnet", data = workoutTrainingSubTrain)
+```
+```{r}
+nnetFit
+```
+
+Neural networks has very low accuracy.
+
+Next, move to the Random Forests
+
+```{r, cache=TRUE}
+rfFit <- randomForest(classe ~ ., data = workoutTrainingSubTrain, importance = TRUE, ntrees = 10)
+rfFit
+```
+Error 0.13% is very promising. 
+
+
+## Cross-validation
+
+```{r}
+# cross validation for rpart
+pred <- predict(rpartFit,workoutTrainingSubTrain)
+workoutTrainingSubTrain$predRight <- pred==workoutTrainingSubTrain$classe
+table(pred,workoutTrainingSubTrain$classe)
+```
+
+```{r}
+# cross validation for Random Neural networks
+pred <- predict(nnetFit,workoutTrainingSubTest)
+workoutTrainingSubTest$predRight <- pred==workoutTrainingSubTest$classe
+table(pred,workoutTrainingSubTest$classe)
+```
+
+```{r}
+# cross validation for Random Forests
+pred <- predict(rfFit,workoutTrainingSubTest)
+workoutTrainingSubTest$predRight <- pred==workoutTrainingSubTest$classe
+table(pred,workoutTrainingSubTest$classe)
+```
+
+As we see, the Random Forests has much better accuracy then other models.
+
+### Exploring sample error
+
+```{r}
+confusionMatrix(pred, workoutTrainingSubTest$classe)
+```
+We have 99,9% accuracy.
+
+To sum up, it worth to say that Random Forests as method to predict vlaues is the most accurate.
+
+
+P.S. The script for the 2-nd assignment is in other file "second_assignment_scripit.R" in Github repo pml_final_work_assignment
